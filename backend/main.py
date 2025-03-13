@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from pydantic import BaseModel
 from openai import OpenAI
@@ -11,6 +12,16 @@ load_dotenv("../.env")
 client = OpenAI()
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 users_list = daft.read_parquet("../twitter_users.parquet").to_pydict()
 user_interactions_df = daft.read_parquet("../twitter_user_interactions.parquet").collect()
 

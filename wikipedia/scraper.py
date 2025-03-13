@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 POPULAR_PAGES_URL = "https://en.wikipedia.org/wiki/Wikipedia:Popular_pages"
-OUTPUT_DIR = "popular_wiki_articles"
+OUTPUT_DIR = "../popular_wiki_articles"
 RATE_LIMIT_DELAY = 1  # seconds between API requests to avoid rate limiting
 
 def get_popular_page_titles():
@@ -121,33 +121,44 @@ def download_wikipedia_articles(page_titles):
     if failed_downloads:
         logger.warning(f"Failed to download {len(failed_downloads)} articles: {failed_downloads}")
 
-def extract_and_download_linked_articles():
+def extract_and_download_linked_articles(popular_page_titles):
     """
-    Extract links from all downloaded articles, find the union of these links,
+    Extract links only from the original popular articles (1st degree),
     and download those linked articles if they don't already exist.
+    
+    Args:
+        popular_page_titles: List of the original popular page titles
     """
-    logger.info("Extracting links from downloaded articles...")
+    logger.info("Extracting links from popular articles (1st degree only)...")
     
     # Check if output directory exists
     if not os.path.exists(OUTPUT_DIR):
         logger.error(f"Output directory {OUTPUT_DIR} does not exist")
         return
     
-    # Get all JSON files in the output directory
-    json_files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.json')]
-    logger.info(f"Found {len(json_files)} downloaded articles")
+    # Convert popular page titles to their corresponding filenames
+    popular_page_filenames = []
+    for title in popular_page_titles:
+        safe_title = re.sub(r'[^\w\s-]', '', title).replace(' ', '_')
+        popular_page_filenames.append(f"{safe_title}.json")
     
-    # Extract links from all articles
+    logger.info(f"Processing {len(popular_page_filenames)} original popular pages")
+    
+    # Extract links only from the original popular articles
     all_links = set()
-    for json_file in tqdm(json_files, desc="Extracting links"):
+    for filename in tqdm(popular_page_filenames, desc="Extracting links from popular pages"):
+        file_path = os.path.join(OUTPUT_DIR, filename)
         try:
-            with open(os.path.join(OUTPUT_DIR, json_file), 'r', encoding='utf-8') as f:
-                article_data = json.load(f)
-                if 'links' in article_data:
-                    # Add all links to the set (automatically handles duplicates)
-                    all_links.update(article_data['links'])
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    article_data = json.load(f)
+                    if 'links' in article_data:
+                        # Add all links to the set (automatically handles duplicates)
+                        all_links.update(article_data['links'])
+            else:
+                logger.warning(f"Popular page file not found: {filename}")
         except Exception as e:
-            logger.error(f"Error extracting links from {json_file}: {e}")
+            logger.error(f"Error extracting links from {filename}: {e}")
     
     # Filter out special pages and non-article pages
     filtered_links = [
@@ -163,11 +174,8 @@ def extract_and_download_linked_articles():
         not link.startswith('Module:')
     ]
     
-    logger.info(f"Found {len(filtered_links)} unique links to download")
+    logger.info(f"Found {len(filtered_links)} unique 1st-degree links to download")
     
-    # assert Scottie Pippen is on the list
-    assert "Scottie Pippen" in filtered_links
-
     # Download the linked articles
     download_wikipedia_articles(filtered_links)
 
@@ -182,8 +190,8 @@ def main():
     download_wikipedia_articles(popular_pages)
     
     # After completing the initial download, extract links and download those articles
-    logger.info("Initial download complete. Now extracting links and downloading linked articles...")
-    extract_and_download_linked_articles()
+    logger.info("Initial download complete. Now extracting links and downloading linked articles (1st degree only)...")
+    extract_and_download_linked_articles(popular_pages)
     
     logger.info("Wikipedia popular pages download complete")
 

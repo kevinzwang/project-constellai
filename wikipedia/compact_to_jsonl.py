@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # Constants
-INPUT_DIR = "popular_wiki_articles"
+INPUT_DIR = "../popular_wiki_articles"
 OUTPUT_FILE = "wikipedia_articles.jsonl"
 
 def compact_jsons_to_jsonl():
