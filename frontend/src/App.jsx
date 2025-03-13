@@ -119,18 +119,34 @@ function App() {
 
   // Apply force atlas 2 layout to graph
   const applyForceAtlas2 = (graphData) => {
-    const settings = {
-      iterations: 100,
-      settings: {
-        gravity: 0.1,
-        strongGravityMode: true,
-        scalingRatio: 1,
-        preventOverlap: true,
-        barnesHutOptimize: true
+    if (dataSource == "twitter") {
+      const settings = {
+        iterations: 100,
+        settings: {
+          gravity: 0.1,
+          strongGravityMode: true,
+          scalingRatio: 1,
+          preventOverlap: true,
+          barnesHutOptimize: true
+        }
       }
+      
+      forceAtlas2.assign(graphData, settings)
+    } else {
+      const settings = {
+        iterations: 100,
+        settings: {
+          gravity: 0.1,
+          strongGravityMode: true,
+          scalingRatio: 1,
+          preventOverlap: true,
+          barnesHutOptimize: true
+        }
+      }
+
+      forceAtlas2.assign(graphData, settings)
     }
-    
-    forceAtlas2.assign(graphData, settings)
+
     return graphData
   }
 

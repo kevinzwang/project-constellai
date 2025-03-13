@@ -169,8 +169,10 @@ if wiki_nodes_exists and wiki_edges_exists:
         raw_wiki_edges_df = daft.read_parquet(wiki_edges_path).collect()
         logger.info(f"Loaded raw Wikipedia data: {raw_wiki_nodes_df.count_rows()} nodes, {raw_wiki_edges_df.count_rows()} edges")
         
+        filtered_wiki_edges_df = raw_wiki_edges_df.filter(daft.col("similarity") > 0.42)
+
         # Preprocess data with comprehensive function
-        wiki_nodes_df, wiki_edges_df = preprocess_wiki_data(raw_wiki_nodes_df, raw_wiki_edges_df)
+        wiki_nodes_df, wiki_edges_df = preprocess_wiki_data(raw_wiki_nodes_df, filtered_wiki_edges_df)
         
         logger.info(f"Final Wikipedia data after comprehensive preprocessing: {wiki_nodes_df.count_rows()} nodes, {wiki_edges_df.count_rows()} edges")
     except Exception as e:
@@ -355,16 +357,17 @@ def wiki_connections(selected_users: UserList):
         }
         
         # Convert to JSON
-        json_data = json.dumps(analysis_data, indent=2)
+        json_data = json.dumps(topics_data, indent=2)
         
         # Create instructions for the OpenAI model
-        instructions = """
-        Analyze the relationships between these Wikipedia topics. Each topic has a summary and partial content.
-        The connections show how topics are related with similarity scores.
+        # instructions = """
+        # Analyze the relationships between these Wikipedia topics. Each topic has a summary and partial content.
+        # The connections show how topics are related with similarity scores.
         
-        Write a paragraph that explains how these topics are connected, mentioning each topic and the strength of their relationships.
-        Focus on explaining what each topic is about and how they relate to each other in a meaningful way.
-        """
+        # Write a paragraph that explains how these topics are connected, mentioning each topic and the strength of their relationships.
+        # Focus on explaining what each topic is about and how they relate to each other in a meaningful way.
+        # """
+        instructions = """The following are a map of topics and their Wikipedia articles. Given the information in these articles, write a brief summary on the information in these articles related to how these topics are connected/related to each other."""
         
         # Call OpenAI API
         try:
