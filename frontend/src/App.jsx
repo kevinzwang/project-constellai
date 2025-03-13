@@ -10,6 +10,8 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [graph, setGraph] = useState(null)
+  const [fullGraph, setFullGraph] = useState(null)
+  const [selectedNodes, setSelectedNodes] = useState(new Set())
 
   const fetchTwitterUsers = async () => {
     try {
@@ -32,6 +34,38 @@ function App() {
       console.error('Error fetching Twitter edges:', error)
       return { user1: [], user2: [] }
     }
+  }
+
+  // Toggle node selection
+  const toggleNodeSelection = (nodeId) => {
+    const newSelectedNodes = new Set(selectedNodes)
+    
+    if (newSelectedNodes.has(nodeId)) {
+      // If already selected, deselect it
+      newSelectedNodes.delete(nodeId)
+    } else {
+      // Otherwise, add it to selections
+      newSelectedNodes.add(nodeId)
+    }
+    
+    setSelectedNodes(newSelectedNodes)
+  }
+
+  // Apply force atlas 2 layout to graph
+  const applyForceAtlas2 = (graphData) => {
+    const settings = {
+      iterations: 100,  // Reduced iterations for faster updates
+      settings: {
+        gravity: 0.1,
+        strongGravityMode: true,
+        scalingRatio: 20,
+        preventOverlap: true,
+        barnesHutOptimize: true
+      }
+    }
+    
+    forceAtlas2.assign(graphData, settings)
+    return graphData
   }
 
   useEffect(() => {
@@ -78,40 +112,15 @@ function App() {
         }
       })
 
-      // Run ForceAtlas2 layout
-      const settings = {
-        iterations: 300,  // More iterations for better settling
-        settings: {
-          gravity: 0.1,   // Reduced gravity to allow more spread
-          // linLogMode: true,
-          strongGravityMode: true,  // Helps prevent disconnected components from drifting too far
-          scalingRatio: 20,  // Increased to create more space between nodes
-          // slowDown: 10,     // Increased for more stable layout
-          preventOverlap: true,  // Stops nodes from overlapping
-          barnesHutOptimize: true  // Better performance for large graphs
-        }
-      }
+      // Apply initial force atlas layout
+      applyForceAtlas2(newGraph)
       
-      forceAtlas2.assign(newGraph, settings)
-      
+      // Store the full graph data for reference
+      setFullGraph(newGraph.copy())
       setGraph(newGraph)
       
       // Initialize Sigma
-      if (sigmaRef.current) {
-        sigmaRef.current.kill()
-      }
-      
-      sigmaRef.current = new Sigma(newGraph, containerRef.current, {
-        renderParams: {
-          contextSize: 2048,
-          canvasSize: 2048
-        }
-      })
-      
-      // Set initial camera position to fit the graph
-      const camera = sigmaRef.current.getCamera()
-      camera.setState({x: 0, y: 0, ratio: 2})
-      sigmaRef.current.refresh()
+      initializeSigma(newGraph)
     }
 
     initializeGraph()
@@ -133,33 +142,146 @@ function App() {
     }
   }, []) // Empty dependency array means this effect runs once on mount
 
+  // Initialize or reinitialize Sigma
+  const initializeSigma = (graphData) => {
+    if (sigmaRef.current) {
+      sigmaRef.current.kill()
+    }
+    
+    sigmaRef.current = new Sigma(graphData, containerRef.current, {
+      renderParams: {
+        contextSize: 2048,
+        canvasSize: 2048
+      }
+    })
+    
+    // Set camera position to fit the graph
+    const camera = sigmaRef.current.getCamera()
+    camera.setState({x: 0, y: 0, ratio: 2})
+    
+    // Add click event for nodes
+    sigmaRef.current.on('clickNode', ({ node }) => {
+      toggleNodeSelection(node)
+    })
+    
+    sigmaRef.current.refresh()
+  }
+
   // Search functionality
   useEffect(() => {
-    if (!graph || !searchTerm) {
+    if (!fullGraph || !searchTerm) {
       setSearchResults([])
       return
     }
 
     const results = []
-    graph.forEachNode((node, attributes) => {
+    fullGraph.forEachNode((node, attributes) => {
       if (attributes.label.toLowerCase().includes(searchTerm.toLowerCase())) {
         results.push({ id: node, ...attributes })
       }
     })
     setSearchResults(results)
-  }, [searchTerm, graph])
+  }, [searchTerm, fullGraph])
 
-  // Handle node click in search results
-  const handleNodeClick = (nodeId) => {
-    if (sigmaRef.current) {
-      const nodeAttributes = graph.getNodeAttributes(nodeId)
-      sigmaRef.current.getCamera().animate({ 
-        x: nodeAttributes.x,
-        y: nodeAttributes.y,
-        ratio: 0.5,
-        duration: 500
+  // Get connected nodes for a given node
+  const getConnectedNodes = (nodeId) => {
+    const connectedNodes = new Set([nodeId])
+    
+    fullGraph.forEachEdge((edge, attributes, source, target) => {
+      if (source === nodeId) {
+        connectedNodes.add(target)
+      } else if (target === nodeId) {
+        connectedNodes.add(source)
+      }
+    })
+    
+    return connectedNodes
+  }
+  
+  // Update the graph based on selected nodes
+  const updateGraph = () => {
+    if (!fullGraph) return
+    
+    // Create a new filtered graph
+    const filteredGraph = new graphology.Graph()
+    
+    // If no nodes are selected, show the full graph
+    if (selectedNodes.size === 0) {
+      fullGraph.forEachNode((node, attributes) => {
+        // Copy node but with initial random positions for layout
+        filteredGraph.addNode(node, { 
+          ...attributes,
+          x: Math.random() * 10 - 5,  // Random initial position
+          y: Math.random() * 10 - 5
+        })
+      })
+      
+      fullGraph.forEachEdge((edge, attributes, source, target) => {
+        filteredGraph.addEdge(source, target, { ...attributes })
+      })
+    } else {
+      // Get all nodes that should be displayed (selected nodes and their connections)
+      const nodesToShow = new Set()
+      
+      // Add all selected nodes
+      selectedNodes.forEach(nodeId => {
+        // Get connected nodes for this node
+        const connectedSet = getConnectedNodes(nodeId)
+        connectedSet.forEach(id => nodesToShow.add(id))
+      })
+      
+      // Add the nodes to the filtered graph
+      nodesToShow.forEach(nodeId => {
+        if (fullGraph.hasNode(nodeId)) {
+          const attrs = fullGraph.getNodeAttributes(nodeId)
+          // Highlight selected nodes
+          const isSelected = selectedNodes.has(nodeId)
+          filteredGraph.addNode(nodeId, { 
+            ...attrs, 
+            color: isSelected ? "#FF3366" : attrs.color, // Highlight selected nodes
+            // size: isSelected ? attrs.size * 1.5 : attrs.size, // Make selected nodes larger
+            // x: Math.random() * 10 - 5,  // Random initial position for layout
+            // y: Math.random() * 10 - 5
+          })
+        }
+      })
+      
+      // Add edges between nodes that should be shown
+      fullGraph.forEachEdge((edge, attributes, source, target) => {
+        if (nodesToShow.has(source) && nodesToShow.has(target)) {
+          filteredGraph.addEdge(source, target, { ...attributes })
+        }
       })
     }
+    
+    // Apply Force Atlas 2 to the filtered graph to recalculate layout
+    applyForceAtlas2(filteredGraph)
+    
+    // Update the graph state
+    setGraph(filteredGraph)
+    
+    // Update Sigma instance with the new graph data
+    initializeSigma(filteredGraph)
+  }
+  
+  // Handle node click from search results
+  const handleNodeClick = (nodeId) => {
+    toggleNodeSelection(nodeId)
+    
+    // Clear search term after selection
+    setSearchTerm('')
+  }
+
+  // Effect to update graph when selected nodes change
+  useEffect(() => {
+    if (fullGraph) {
+      updateGraph()
+    }
+  }, [selectedNodes, fullGraph])
+
+  // Clear selection button handler
+  const handleClearSelection = () => {
+    setSelectedNodes(new Set())
   }
 
   return (
@@ -186,7 +308,7 @@ function App() {
           fontWeight: 'bold',
           color: '#333'
         }}>
-          Project ConstellAI
+          ConstellAI
         </h1>
 
         <input
@@ -201,10 +323,72 @@ function App() {
             fontSize: '14px'
           }}
         />
+        
+        {/* Selected nodes section */}
+        {selectedNodes.size > 0 && (
+          <div style={{
+            marginTop: '8px',
+            padding: '12px',
+            backgroundColor: '#f5f8fa',
+            borderRadius: '4px',
+            border: '1px solid #e1e8ed'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>Selected Nodes ({selectedNodes.size})</h3>
+              <button 
+                onClick={handleClearSelection}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: '#e1e8ed',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Clear All
+              </button>
+            </div>
+            <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+              {Array.from(selectedNodes).map(nodeId => (
+                <div 
+                  key={nodeId}
+                  onClick={() => toggleNodeSelection(nodeId)}
+                  style={{
+                    padding: '4px 8px',
+                    margin: '2px 0',
+                    backgroundColor: '#FF3366',
+                    color: 'white',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <span>{nodeId}</span>
+                  <span>×</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Search results */}
         <div style={{
           flex: 1,
           overflowY: 'auto'
         }}>
+          {searchResults.length > 0 && (
+            <div style={{ marginBottom: '8px', fontSize: '14px', color: '#657786' }}>
+              {searchResults.length} results found
+            </div>
+          )}
           {searchResults.map((node) => (
             <div
               key={node.id}
@@ -214,11 +398,9 @@ function App() {
                 cursor: 'pointer',
                 borderRadius: '4px',
                 marginBottom: '4px',
-                backgroundColor: '#f5f5f5',
-                transition: 'background-color 0.2s ease',
-                ':hover': {
-                  backgroundColor: '#e0e0e0'
-                }
+                backgroundColor: selectedNodes.has(node.id) ? '#e8f5fd' : '#f5f5f5',
+                borderLeft: selectedNodes.has(node.id) ? '3px solid #1DA1F2' : 'none',
+                transition: 'background-color 0.2s ease'
               }}
             >
               {node.label}
