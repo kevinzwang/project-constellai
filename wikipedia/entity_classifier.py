@@ -6,15 +6,15 @@ import time
 from openai import OpenAI
 from dotenv import load_dotenv
 from typing import List
-import numpy as np
-from scipy.spatial.distance import cosine
 
 # Load environment variables
 load_dotenv()
 
+# Initialize OpenAI client
+client = OpenAI()
+
 # %%
 df = daft.read_json("wikipedia_articles.jsonl")
-df.show(20)
 
 # %%
 # add a new column to the dataframe that is randomly true or false
@@ -152,7 +152,7 @@ df.show(100)
 # %%
 # print title and is_entity to json
 
-df_title_is_entity = df.select("title", "is_entity")
+df_title_is_entity = df.select("title", "is_entity").collect()
 
 with open("entity_classifier.json", "w") as f:
     json.dump(df_title_is_entity.to_pylist(), f)
@@ -162,22 +162,19 @@ with open("entity_classifier.json", "w") as f:
 
 # TODO
 df = df.where(df["is_entity"])
-df.show(20)
+df = df.collect()
 
 # %%
 # drop categories and is_entity column
 df = df.exclude("categories", "is_entity")
-df.show(20)
-
-# %%
-df.show(20)
+df = df.collect()
 
 # %%
 df_with_text = df.select("title", "summary", "text", "url")
 df = df.exclude("summary", "text", "url")
 
 df = df.explode("links")
-
+df = df.collect()
 
 # %%
 print(df.count_rows())
@@ -185,6 +182,7 @@ df = df.join(df, how="semi", left_on="links", right_on="title").collect()
 print(df.count_rows())
 df = df.groupby("title").agg(col("links").agg_list().alias("links"))
 df = df.join(df_with_text, how="left", left_on="title", right_on="title")
+df = df.collect()
 
 # %%
 # CELL 1: Generate embeddings for all article titles
@@ -241,17 +239,15 @@ def generate_title_embeddings(title: daft.Series) -> List[List[float]]:
 print("Generating embeddings for all article titles...")
 df_with_text = df_with_text.with_column("title_embedding", generate_title_embeddings(df_with_text["title"]))
 print("Title embeddings generated.")
-df_with_text.select("title", "title_embedding").show(5)
+df_with_text = df_with_text.collect()
 
 # %%
-# CELL 2: Explode the links for each article to create pairs
 print("Creating article-link pairs...")
 df_exploded = df.explode("links")
 print(f"Generated {df_exploded.count_rows()} article-link pairs")
-df_exploded.show(10)
+df_exploded = df_exploded.collect()
 
 # %%
-# CELL 3: Join with title embeddings to get the source embedding for each pair
 print("Adding source title embeddings...")
 df_exploded = df_exploded.join(
     df_with_text.select("title", "title_embedding"),
@@ -259,22 +255,29 @@ df_exploded = df_exploded.join(
     right_on="title",
     how="left"
 )
-df_exploded.show(10)
+df_exploded = df_exploded.collect()
 
 # %%
-# CELL 4: Join with title embeddings again to get target embedding for each link
-print("Adding target link embeddings...")
+# print("Adding target link embeddings...")
+# df_exploded = df_exploded.join(
+#     df_with_text.select("title", "title_embedding"),
+#     left_on="links",
+#     right_on="title",
+#     how="left",
+#     right_select=["title_embedding"]
+# ).rename("title_embedding_right", "link_embedding")
+# df_exploded.show(10)
+
 df_exploded = df_exploded.join(
-    df_with_text.select("title", "title_embedding"),
+    df_with_text,
     left_on="links",
     right_on="title",
     how="left",
-    right_select=["title_embedding"]
-).rename("title_embedding_right", "link_embedding")
-df_exploded.show(10)
+    suffix="_right"
+).with_column_renamed("title_embedding_right", "link_embedding")
+df_exploded = df_exploded.collect()
 
 # %%
-# CELL 5: Calculate cosine similarity for each article-link pair
 @daft.udf(batch_size=1000, return_dtype=daft.DataType.float64())
 def calculate_cosine_similarity(source_embedding: daft.Series, target_embedding: daft.Series) -> List[float]:
     """
@@ -287,7 +290,6 @@ def calculate_cosine_similarity(source_embedding: daft.Series, target_embedding:
     Returns:
         List of similarity scores
     """
-    import numpy as np
     from scipy.spatial.distance import cosine
     
     source_embeddings = source_embedding.to_pylist()
@@ -312,103 +314,47 @@ df_exploded = df_exploded.with_column(
     "similarity", 
     calculate_cosine_similarity(df_exploded["title_embedding"], df_exploded["link_embedding"])
 )
-df_exploded.show(10)
+df_exploded = df_exploded.collect()
 
 # %%
-# CELL 6: Filter out rows with missing embeddings or zero similarity
 print("Filtering valid pairs...")
 df_exploded = df_exploded.where(df_exploded["similarity"] > 0)
 print(f"Remaining pairs after filtering: {df_exploded.count_rows()}")
-df_exploded.show(10)
+df_exploded = df_exploded.collect()
 
 # %%
-# CELL 7: Group by title, sort by similarity, and take top 10 links
-print("Selecting top 10 neighbors for each article...")
-neighbors_df = df_exploded.groupby("title").agg(
-    df_exploded.sort("similarity", desc=True).limit(10)
-)
-print(f"Generated neighbors for {neighbors_df.count_rows()} articles")
-neighbors_df.show(5)
+# print("Selecting top 10 neighbors for each article...")
+# neighbors_df = df_exploded.groupby("title").agg(
+#     df_exploded.sort("similarity", desc=True).limit(10)
+# )
+# print(f"Generated neighbors for {neighbors_df.count_rows()} articles")
+# neighbors_df.show(5)
+
+sorted_df = df_exploded.sort("similarity", desc=True)
+# Group by 'title' and use a custom aggregation to get the top 10 neighbors
+neighbors_df = sorted_df.groupby("title").agg(
+    col("links").agg_list().alias("top_links")
+).with_column("top_links", col("top_links").list.slice(0, 10))
+# Materialize the DataFrame to count rows
+neighbors_df.collect()
+print(f"Generated neighbors for (neighbors_df.count_rows()) articles")
+neighbors_df = neighbors_df.collect()
 
 # %%
-# CELL 8: Extract the links column as a list for each title
-@daft.udf(batch_size=100, return_dtype=daft.DataType.python())
-def extract_top_links(links: daft.Series) -> List[List[str]]:
-    """
-    Extract the top links from the grouped DataFrame.
-    
-    Args:
-        links: Series of link values after groupby
-        
-    Returns:
-        List of lists containing the top links for each title
-    """
-    import daft
-    
-    link_lists = []
-    links_list = links.to_pylist()
-    
-    # Each item should already be a list after the groupby+limit
-    for link_group in links_list:
-        link_lists.append(link_group)
-    
-    return link_lists
-
-# Extract top links and add as neighbors column
-print("Formatting neighbors as lists...")
-neighbors_df = neighbors_df.with_column(
-    "neighbors", 
-    extract_top_links(neighbors_df["links"])
-)
-neighbors_df.show(5)
-
-# %%
-# CELL 9: Join neighbors back to the original dataframe
-print("Adding neighbors to the original dataframe...")
-df = df.join(
-    neighbors_df.select("title", "neighbors"),
-    left_on="title",
-    right_on="title",
-    how="left"
-)
-
-# %%
-# CELL 10: Show the final result
-print("Final dataframe with neighbors:")
-df.select("title", "neighbors").show(20)
-
-# %%
-# CELL 11: Write all titles and their texts to a parquet file (node data)
 print("Preparing node data for parquet file...")
 
 # Create a nodes dataframe with all the relevant attributes
 nodes_df = df_with_text.select(
-    "title",         # Node ID
+    col("title").alias("id"),         # Node ID
     "summary",       # Short description
     "text",          # Full content
-    "url"            # Original URL
 )
-
-# Add embedding data
-nodes_df = nodes_df.with_column("embedding", df_with_text["title_embedding"])
-
-# Add entity flag if available
-try:
-    nodes_df = nodes_df.join(
-        df_title_is_entity,
-        left_on="title",
-        right_on="title",
-        how="left"
-    )
-except:
-    print("Note: 'is_entity' column not available, skipping...")
 
 print(f"Writing {nodes_df.count_rows()} nodes to parquet...")
 nodes_df.write_parquet("wikipedia_nodes.parquet")
 print("Node data saved to wikipedia_nodes.parquet")
 
 # %%
-# CELL 12: Write all edges/adjacency list to a parquet file (edge data)
 print("Preparing edge data for parquet file...")
 
 # We'll use the exploded dataframe with similarity scores as our edge list
@@ -418,22 +364,8 @@ edge_df = df_exploded.select(
     "similarity"             # Edge weight
 )
 
-# Add a unique edge ID
-@daft.udf(batch_size=10000, return_dtype=daft.DataType.string())
-def create_edge_ids(source: daft.Series, target: daft.Series) -> List[str]:
-    """Create unique edge IDs by combining source and target"""
-    sources = source.to_pylist()
-    targets = target.to_pylist()
-    return [f"{s}→{t}" for s, t in zip(sources, targets)]
-
-edge_df = edge_df.with_column(
-    "edge_id", 
-    create_edge_ids(edge_df["title"], edge_df["links"])
-)
-
 # Rearrange columns and rename for clarity
 edge_df = edge_df.select(
-    "edge_id",
     col("title").alias("source"),
     col("links").alias("target"),
     "similarity"
@@ -442,20 +374,5 @@ edge_df = edge_df.select(
 print(f"Writing {edge_df.count_rows()} edges to parquet...")
 edge_df.write_parquet("wikipedia_edges.parquet")
 print("Edge data saved to wikipedia_edges.parquet")
-
-# Create an alternative adjacency list format (source -> list of targets with weights)
-print("Creating adjacency list format...")
-adjacency_df = neighbors_df.select(
-    "title",
-    "neighbors",
-    "similarity"
-)
-
-print(f"Writing adjacency list with {adjacency_df.count_rows()} entries to parquet...")
-adjacency_df.write_parquet("wikipedia_adjacency.parquet")
-print("Adjacency list saved to wikipedia_adjacency.parquet")
-
-# %%
-
 
 
