@@ -342,7 +342,7 @@ function App() {
     })
     
     const camera = sigmaRef.current.getCamera()
-    camera.setState({x: 0, y: 0, ratio: 1.5})
+    camera.setState({x: 0.6, y: 0.4, ratio: 1.5})
     
     sigmaRef.current.on('clickNode', ({ node }) => {
       toggleNodeSelection(node)
