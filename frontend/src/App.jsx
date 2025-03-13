@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import graphology from 'graphology'
 import { Sigma } from 'sigma'
+import forceAtlas2 from 'graphology-layout-forceatlas2'
 
 function App() {
   const containerRef = useRef(null)
@@ -10,22 +11,110 @@ function App() {
   const [searchResults, setSearchResults] = useState([])
   const [graph, setGraph] = useState(null)
 
+  const fetchTwitterUsers = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/twitter/users')
+      const users = await response.json()
+      return users
+    } catch (error) {
+      console.error('Error fetching Twitter users:', error)
+      return { user: [], followers: [] }
+    }
+  }
+
+  const fetchTwitterEdges = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/twitter/edges')
+      const edges = await response.json()
+      console.log(edges.user1.length)
+      return edges
+    } catch (error) {
+      console.error('Error fetching Twitter edges:', error)
+      return { user1: [], user2: [] }
+    }
+  }
+
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Create a new graph
-    const newGraph = new graphology.Graph();
-    newGraph.addNode("1", { label: "Node 1", x: 0, y: 0, size: 10, color: "blue" });
-    newGraph.addNode("2", { label: "Node 2", x: 1, y: 1, size: 10, color: "blue" });
-    newGraph.addEdge("1", "2", { size: 5, color: "grey" });
-    
-    setGraph(newGraph)
-    
-    // Initialize Sigma
-    sigmaRef.current = new Sigma(newGraph, containerRef.current)
+    const initializeGraph = async () => {
+      // Create a new graph
+      const newGraph = new graphology.Graph()
+      
+      // Fetch Twitter users and edges
+      const [users, edges] = await Promise.all([
+        fetchTwitterUsers(),
+        fetchTwitterEdges()
+      ])
+      
+      // First add all nodes with random initial positions
+      const maxFollowers = Math.max(...users.followers)
+      const minLogFollowers = Math.log(Math.min(...users.followers.filter(f => f > 0)) || 1)
+      const maxLogFollowers = Math.log(maxFollowers)
+      
+      users.user.forEach((username, index) => {
+        const followers = users.followers[index]
+        // Calculate normalized log size between 5 and 25 based on followers
+        const logFollowers = followers > 0 ? Math.log(followers) : minLogFollowers
+        const normalizedSize = 4 + ((logFollowers - minLogFollowers) / (maxLogFollowers - minLogFollowers)) * 12
 
-    // // Set initial camera position to fit the graph
-    // sigmaRef.current.getCamera().animate({ ratio: 2, x: 0, y: 0 })
+        newGraph.addNode(username, {
+          label: username,
+          x: Math.random() * 10 - 5,  // Random position between -5 and 5
+          y: Math.random() * 10 - 5,
+          size: normalizedSize,
+          color: "#1DA1F2" // Twitter blue color
+        })
+      })
+
+      // Add edges between users
+      edges.user1.forEach((user1, index) => {
+        const user2 = edges.user2[index]
+        if (newGraph.hasNode(user1) && newGraph.hasNode(user2)) {
+          newGraph.addEdge(user1, user2, {
+            size: 1,
+            color: "#657786" // Twitter gray color
+          })
+        }
+      })
+
+      // Run ForceAtlas2 layout
+      const settings = {
+        iterations: 300,  // More iterations for better settling
+        settings: {
+          gravity: 0.1,   // Reduced gravity to allow more spread
+          // linLogMode: true,
+          strongGravityMode: true,  // Helps prevent disconnected components from drifting too far
+          scalingRatio: 20,  // Increased to create more space between nodes
+          // slowDown: 10,     // Increased for more stable layout
+          preventOverlap: true,  // Stops nodes from overlapping
+          barnesHutOptimize: true  // Better performance for large graphs
+        }
+      }
+      
+      forceAtlas2.assign(newGraph, settings)
+      
+      setGraph(newGraph)
+      
+      // Initialize Sigma
+      if (sigmaRef.current) {
+        sigmaRef.current.kill()
+      }
+      
+      sigmaRef.current = new Sigma(newGraph, containerRef.current, {
+        renderParams: {
+          contextSize: 2048,
+          canvasSize: 2048
+        }
+      })
+      
+      // Set initial camera position to fit the graph
+      const camera = sigmaRef.current.getCamera()
+      camera.setState({x: 0, y: 0, ratio: 2})
+      sigmaRef.current.refresh()
+    }
+
+    initializeGraph()
 
     // Handle window resize
     const handleResize = () => {
@@ -141,16 +230,18 @@ function App() {
       {/* Graph Container */}
       <div style={{ 
         flex: 1,
-        position: 'relative'
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: '#f8f9fa'  // Light grey background
       }}>
         <div 
           ref={containerRef} 
           style={{ 
+            width: '100%',
+            height: '100%',
             position: 'absolute',
             top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0
+            left: 0
           }} 
         />
       </div>
