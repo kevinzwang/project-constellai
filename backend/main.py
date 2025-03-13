@@ -367,7 +367,7 @@ def wiki_connections(selected_users: UserList):
         # Write a paragraph that explains how these topics are connected, mentioning each topic and the strength of their relationships.
         # Focus on explaining what each topic is about and how they relate to each other in a meaningful way.
         # """
-        instructions = """The following are a map of topics and their Wikipedia articles. Given the information in these articles, write a brief summary on the information in these articles related to how these topics are connected/related to each other."""
+        instructions = """The following are a map of topics and their Wikipedia articles. Given the information in these articles, write a brief (tweet-length) analysis on how these topics are connected/related to each other. Focus on explicit, factual information about their relationships instead of information about the individual topics."""
         
         # Call OpenAI API
         try:
