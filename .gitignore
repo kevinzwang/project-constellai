@@ -3,3 +3,4 @@
 *.json
 *.jsonl
 *.parquet
+__pycache__/
