@@ -121,14 +121,17 @@ function App() {
       users.user.forEach((username, index) => {
         const followers = users.followers[index]
         const logFollowers = followers > 0 ? Math.log(followers) : minLogFollowers
-        const normalizedSize = 4 + ((logFollowers - minLogFollowers) / (maxLogFollowers - minLogFollowers)) * 12
+        const normalizedSize = 5 + ((logFollowers - minLogFollowers) / (maxLogFollowers - minLogFollowers)) * 15
 
         newGraph.addNode(username, {
           label: username,
           x: Math.random() * 10 - 5,
           y: Math.random() * 10 - 5,
           size: normalizedSize,
-          color: "#1DA1F2"
+          color: "#1DA1F2",
+          border: "#ffffff",
+          borderWidth: 1.5,
+          highlight: "#FF3366"
         })
       })
 
@@ -136,8 +139,9 @@ function App() {
         const user2 = edges.user2[index]
         if (newGraph.hasNode(user1) && newGraph.hasNode(user2)) {
           newGraph.addEdge(user1, user2, {
-            size: 1,
-            color: "#657786"
+            size: 1.5,
+            color: "#AAB8C2",
+            type: "arrow"
           })
         }
       })
@@ -174,16 +178,64 @@ function App() {
     
     sigmaRef.current = new Sigma(graphData, containerRef.current, {
       renderParams: {
+        defaultNodeColor: "#1DA1F2",
+        defaultEdgeColor: "#AAB8C2",
+        edgeColor: "default",
+        labelColor: {
+          color: "#000000",
+          attribute: null
+        },
+        labelSize: {
+          defaultValue: 12,
+          attribute: "size",
+          partition: [5, 10, 15, 20],
+          values: [11, 12, 13, 14]
+        },
+        defaultLabelSize: 12,
+        labelThreshold: 7,
+        defaultEdgeType: "arrow",
+        defaultNodeBorderColor: "#ffffff",
+        borderSize: 2,
+        nodeBorderColor: {
+          color: "#ffffff",
+          attribute: null
+        },
+        hoverBorderWidth: 3,
+        hoverBorderColor: "#FF3366",
+        singleHover: true,
+        labelHoverShadow: true,
+        labelHoverShadowColor: "#000000",
+        nodeHoverColor: {
+          color: "#FF3366",
+          attribute: null
+        },
+        defaultNodeHoverColor: "#FF3366",
+        defaultHoverLabelBGColor: "#ffffff",
+        defaultLabelHoverColor: "#000000",
+        edgeHoverSizeRatio: 2,
+        edgeHoverExtremities: true,
+        drawLabels: true,
+        drawEdgeLabels: false,
+        defaultEdgeHoverColor: "#000000",
+        enableEdgeHovering: true,
         contextSize: 2048,
         canvasSize: 2048
       }
     })
     
     const camera = sigmaRef.current.getCamera()
-    camera.setState({x: 0, y: 0, ratio: 2})
+    camera.setState({x: 0, y: 0, ratio: 1.5})
     
     sigmaRef.current.on('clickNode', ({ node }) => {
       toggleNodeSelection(node)
+    })
+
+    sigmaRef.current.on('overNode', ({ node }) => {
+      document.body.style.cursor = 'pointer'
+    })
+
+    sigmaRef.current.on('outNode', () => {
+      document.body.style.cursor = 'default'
     })
     
     sigmaRef.current.refresh()
@@ -250,13 +302,20 @@ function App() {
           filteredGraph.addNode(nodeId, { 
             ...attrs, 
             color: isSelected ? "#FF3366" : attrs.color,
+            borderWidth: isSelected ? 3 : attrs.borderWidth || 1.5,
+            size: isSelected ? attrs.size * 1.2 : attrs.size
           })
         }
       })
       
       fullGraph.forEachEdge((edge, attributes, source, target) => {
         if (nodesToShow.has(source) && nodesToShow.has(target)) {
-          filteredGraph.addEdge(source, target, { ...attributes })
+          const isSelectedEdge = selectedNodes.has(source) && selectedNodes.has(target)
+          filteredGraph.addEdge(source, target, { 
+            ...attributes,
+            size: isSelectedEdge ? 2 : attributes.size,
+            color: isSelectedEdge ? "#FF3366" : attributes.color
+          })
         }
       })
     }
@@ -290,7 +349,8 @@ function App() {
       width: '100vw', 
       display: 'flex',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-      backgroundColor: '#ffffff'
+      backgroundColor: '#F7F9FA',
+      color: '#14171A'
     }}>
       <div style={{
         width: '400px',
@@ -298,15 +358,19 @@ function App() {
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
-        borderRight: '1.5px solid #E1E8ED',
-        backgroundColor: '#ffffff'
+        borderRight: '1px solid #E1E8ED',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 0 10px rgba(0, 0, 0, 0.05)'
       }}>
         <h1 style={{ 
           margin: '0',
-          fontSize: '22px',
+          fontSize: '24px',
           fontWeight: 'bold',
-          color: '#14171A'
+          color: '#1DA1F2',
+          display: 'flex',
+          alignItems: 'center'
         }}>
+          <span style={{ marginRight: '8px', fontSize: '28px' }}>🪐</span>
           ConstellAI
         </h1>
 
@@ -316,11 +380,13 @@ function App() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
-            padding: '10px 15px',
+            padding: '12px 15px',
             borderRadius: '9999px',
             border: '1px solid #E1E8ED',
             backgroundColor: '#F5F8FA',
-            fontSize: '15px'
+            fontSize: '15px',
+            boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.05)',
+            outline: 'none'
           }}
         />
         
@@ -329,9 +395,10 @@ function App() {
           <div style={{
             marginTop: '8px',
             padding: '12px',
-            backgroundColor: '#F5F8FA',
-            borderRadius: '8px',
-            border: '1px solid #E1E8ED'
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #E1E8ED',
+            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)'
           }}>
             <div style={{
               display: 'flex',
@@ -339,41 +406,54 @@ function App() {
               alignItems: 'center',
               marginBottom: '8px'
             }}>
-              <h3 style={{ margin: 0, fontSize: '16px', color: '#14171A' }}>Selected Nodes ({selectedNodes.size})</h3>
+              <h3 style={{ margin: 0, fontSize: '15px', color: '#14171A', fontWeight: '600' }}>Selected Nodes ({selectedNodes.size})</h3>
               <button 
                 onClick={handleClearSelection}
                 style={{
-                  padding: '6px 12px',
-                  backgroundColor: '#E1E8ED',
+                  padding: '4px 10px',
+                  backgroundColor: '#EFF3F4',
                   border: 'none',
                   borderRadius: '9999px',
                   cursor: 'pointer',
-                  fontSize: '13px'
+                  fontSize: '12px',
+                  color: '#536471',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s ease'
                 }}
               >
                 Clear All
               </button>
             </div>
-            <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+            <div style={{ 
+              maxHeight: '100px', 
+              overflowY: 'auto',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '6px',
+              padding: '2px 0'
+            }}>
               {Array.from(selectedNodes).map(nodeId => (
                 <div 
                   key={nodeId}
                   onClick={() => toggleNodeSelection(nodeId)}
                   style={{
-                    padding: '6px 10px',
-                    margin: '4px 0',
+                    padding: '4px 10px',
                     backgroundColor: '#1DA1F2',
                     color: 'white',
                     borderRadius: '9999px',
-                    fontSize: '14px',
+                    fontSize: '13px',
                     cursor: 'pointer',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    minWidth: 'fit-content',
+                    fontWeight: '500',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+                    transition: 'background-color 0.2s ease'
                   }}
                 >
                   <span>{nodeId}</span>
-                  <span>×</span>
+                  <span style={{ marginLeft: '6px', fontWeight: 'bold' }}>×</span>
                 </div>
               ))}
             </div>
@@ -381,15 +461,18 @@ function App() {
               <button 
                 onClick={analyzeNodes}
                 style={{
-                  padding: '10px 20px',
+                  padding: '8px 20px',
                   backgroundColor: '#14171A',
                   color: 'white',
                   border: 'none',
                   borderRadius: '9999px',
                   cursor: 'pointer',
-                  marginTop: '12px',
+                  marginTop: '10px',
                   fontWeight: 'bold',
-                  fontSize: '15px'
+                  fontSize: '14px',
+                  width: '100%',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                  transition: 'background-color 0.2s ease'
                 }}
               >
                 Analyze
@@ -402,25 +485,35 @@ function App() {
         {analyzeLoading ? (
           <div
             style={{
-              marginTop: '12px',
-              padding: '12px',
-              backgroundColor: '#F5F8FA',
-              borderRadius: '8px',
-              border: '1px solid #E1E8ED'
+              marginTop: '10px',
+              padding: '0px',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              border: '1px solid #E1E8ED',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              color: '#536471',
+              fontSize: '14px'
             }}
           >
-            Loading...
+            <span style={{ marginRight: '8px' }}>⟳</span> Loading analysis...
           </div>
         ) : (
           analyzeResponse && (
             <div
               style={{
-                marginTop: '12px',
-                padding: '12px',
-                backgroundColor: '#F5F8FA',
-                borderRadius: '8px',
+                marginTop: '10px',
+                padding: '10px 15px 10px 15px',
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
                 border: '1px solid #E1E8ED',
-                overflowY: 'auto'
+                overflowY: 'auto',
+                color: '#14171A',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                lineHeight: '1.4',
+                fontSize: '14px'
               }}
               dangerouslySetInnerHTML={{ __html: analyzeResponse }}
             />
@@ -430,10 +523,16 @@ function App() {
         {/* Search results */}
         <div style={{
           flex: 1,
-          overflowY: 'auto'
+          overflowY: 'auto',
+          backgroundColor: '#ffffff',
+          borderRadius: '16px',
+          border: searchResults.length > 0 ? '1px solid #E1E8ED' : 'none',
+          padding: searchResults.length > 0 ? '15px' : '0',
+          marginTop: '10px',
+          boxShadow: searchResults.length > 0 ? '0 2px 6px rgba(0, 0, 0, 0.04)' : 'none'
         }}>
           {searchResults.length > 0 && (
-            <div style={{ marginBottom: '8px', fontSize: '14px', color: '#657786' }}>
+            <div style={{ marginBottom: '12px', fontSize: '15px', color: '#536471', fontWeight: '500' }}>
               {searchResults.length} results found
             </div>
           )}
@@ -442,14 +541,16 @@ function App() {
               key={node.id}
               onClick={() => handleNodeClick(node.id)}
               style={{
-                padding: '10px 15px',
+                padding: '12px 16px',
                 cursor: 'pointer',
-                borderRadius: '8px',
-                marginBottom: '6px',
-                backgroundColor: selectedNodes.has(node.id) ? '#E8F5FD' : '#F5F8FA',
+                borderRadius: '12px',
+                marginBottom: '8px',
+                backgroundColor: selectedNodes.has(node.id) ? '#E8F5FD' : '#F7F9FA',
                 borderLeft: selectedNodes.has(node.id) ? '4px solid #1DA1F2' : 'none',
-                transition: 'background-color 0.2s ease',
-                color: '#14171A'
+                transition: 'all 0.2s ease',
+                color: '#14171A',
+                fontWeight: selectedNodes.has(node.id) ? '500' : 'normal',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.02)'
               }}
             >
               {node.label}
@@ -463,7 +564,8 @@ function App() {
         flex: 1,
         position: 'relative',
         overflow: 'hidden',
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        boxShadow: 'inset 0 0 10px rgba(0, 0, 0, 0.03)'
       }}>
         <div 
           ref={containerRef} 
@@ -475,6 +577,54 @@ function App() {
             left: 0
           }} 
         />
+
+        {/* Graph Legend */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
+          padding: '15px',
+          zIndex: 10,
+          width: '220px'
+        }}>
+          <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '12px', color: '#14171A' }}>
+            Graph Legend
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ 
+              width: '12px', 
+              height: '12px', 
+              borderRadius: '50%', 
+              backgroundColor: '#1DA1F2',
+              marginRight: '10px',
+              border: '1px solid #ffffff'
+            }}></div>
+            <div style={{ fontSize: '14px', color: '#536471' }}>Twitter User</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ 
+              width: '12px', 
+              height: '12px', 
+              borderRadius: '50%', 
+              backgroundColor: '#FF3366',
+              marginRight: '10px',
+              border: '1px solid #ffffff'
+            }}></div>
+            <div style={{ fontSize: '14px', color: '#536471' }}>Selected User</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ 
+              width: '20px', 
+              height: '2px', 
+              backgroundColor: '#AAB8C2',
+              marginRight: '10px'
+            }}></div>
+            <div style={{ fontSize: '14px', color: '#536471' }}>Connection</div>
+          </div>
+        </div>
       </div>
     </div>
   )
