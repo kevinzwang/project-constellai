@@ -5,6 +5,25 @@ import { Sigma } from 'sigma'
 import forceAtlas2 from 'graphology-layout-forceatlas2'
 import { marked } from 'marked';
 
+// Hardcoded game questions for Wikipedia mode
+const hardcodedGameQuestions = [
+  {
+    node1: "Star Wars",
+    node2: "Brad Pitt",
+    commonNeighbors: ["Harrison Ford"]
+  },
+  {
+    node1: "Soviet Union",
+    node2: "UEFA",
+    commonNeighbors: ["Russian Football Union"]
+  },
+  {
+    node1: "Apple Inc.",
+    node2: "Jay-Z",
+    commonNeighbors: ["Apple Music"]
+  }
+];
+
 function App() {
   const containerRef = useRef(null)
   const sigmaRef = useRef(null)
@@ -29,6 +48,19 @@ function App() {
   const [guessCount, setGuessCount] = useState(0);
   const [nodeSuggestions, setNodeSuggestions] = useState([]);
   const [revealAnswer, setRevealAnswer] = useState(false);
+  
+  // Track game session progress for question selection
+  const [gameQuestionCount, setGameQuestionCount] = useState(0);
+  const [shownHardcodedQuestions, setShownHardcodedQuestions] = useState([]);
+  
+  // Prepare question tracking when game mode starts
+  useEffect(() => {
+    if (gameMode) {
+      // Reset tracking when starting game mode
+      setGameQuestionCount(0);
+      setShownHardcodedQuestions([]);
+    }
+  }, [gameMode]);
 
   // Function to find nodes that are exactly 2 degrees apart (have common neighbors)
   const findTwoDegreesApartNodes = () => {
@@ -114,6 +146,71 @@ function App() {
   // Function to start a new game round
   const startNewGameRound = () => {
     try {
+      // Increment the game question count
+      const newQuestionCount = gameQuestionCount + 1;
+      setGameQuestionCount(newQuestionCount);
+      
+      // Special handling for questions when using Wikipedia mode
+      if (dataSource === 'wikipedia') {
+        // Check if this position should use a hardcoded question (positions 1, 3, or 5)
+        const isHardcodedPosition = newQuestionCount === 1 || newQuestionCount === 3 || newQuestionCount === 5;
+        
+        if (isHardcodedPosition) {
+          // Determine which hardcoded question to use based on position
+          let hardcodedIndex;
+          
+          if (newQuestionCount === 1) {
+            hardcodedIndex = 0; // First hardcoded question
+          } else if (newQuestionCount === 3) {
+            hardcodedIndex = 1; // Second hardcoded question
+          } else { // newQuestionCount === 5
+            hardcodedIndex = 2; // Third hardcoded question
+          }
+          
+          const selectedQuestion = hardcodedGameQuestions[hardcodedIndex];
+          
+          // Add this question to the shown list
+          const updatedShownQuestions = [...shownHardcodedQuestions, hardcodedIndex];
+          setShownHardcodedQuestions(updatedShownQuestions);
+          
+          if (fullGraph.hasNode(selectedQuestion.node1) && fullGraph.hasNode(selectedQuestion.node2)) {
+            // Make sure all common neighbors exist in the graph
+            const validCommonNeighbors = selectedQuestion.commonNeighbors.filter(
+              neighbor => fullGraph.hasNode(neighbor)
+            );
+            
+            if (validCommonNeighbors.length > 0) {
+              console.log(`Using hardcoded question #${hardcodedIndex + 1}: ${selectedQuestion.node1} and ${selectedQuestion.node2}`);
+              
+              setGameNodes({
+                node1: selectedQuestion.node1,
+                node2: selectedQuestion.node2,
+                commonNeighbors: validCommonNeighbors
+              });
+              
+              setUserAnswer('');
+              setGameResult({ shown: false, correct: false });
+              setSelectedNodes(new Set([selectedQuestion.node1, selectedQuestion.node2]));
+              setWrongGuesses([]); // Reset wrong guesses
+              setGuessCount(0); // Reset guess count
+              setRevealAnswer(false); // Reset revealed answer state
+              setNodeSuggestions([]); // Reset suggestions
+              setAnalyzeResponse(''); // Clear any analysis text
+              
+              // Focus the answer input field
+              setTimeout(() => {
+                if (answerInputRef.current) {
+                  answerInputRef.current.focus();
+                }
+              }, 100);
+              
+              return; // Exit early since we've set up the game
+            }
+          }
+        }
+      }
+      
+      // Fall back to dynamic node finding if we can't use a hardcoded question
       const nodePair = findTwoDegreesApartNodes();
       
       if (nodePair && nodePair.node1 && nodePair.node2) {
@@ -159,6 +256,8 @@ function App() {
       setWrongGuesses([]); // Reset wrong guesses
       setGuessCount(0); // Reset guess count
       setRevealAnswer(false); // Reset revealed answer state
+      setGameQuestionCount(0); // Reset question counter
+      setShownHardcodedQuestions([]); // Reset shown questions
       
       // Start a new game round when enabling game mode
       startNewGameRound();
@@ -172,6 +271,8 @@ function App() {
       setWrongGuesses([]); // Reset wrong guesses
       setGuessCount(0); // Reset guess count
       setRevealAnswer(false); // Reset revealed answer state
+      setGameQuestionCount(0); // Reset question counter
+      setShownHardcodedQuestions([]); // Reset shown questions
       
       // Remove any existing keypress listeners
       document.removeEventListener('keydown', handleNewRoundKeyPress);
@@ -1309,14 +1410,28 @@ function App() {
                       </div>
                     )}
                     
-                    <p style={{ 
-                      fontSize: '13px', 
-                      color: '#536471',
-                      marginTop: '10px',
-                      fontStyle: 'italic'
-                    }}>
-                      Press any key to continue
-                    </p>
+                    {/* Only show "Press any key to continue" when the game round is finished */}
+                    {(gameResult.correct || revealAnswer) && (
+                      <p style={{ 
+                        fontSize: '13px', 
+                        color: '#536471',
+                        marginTop: '10px',
+                        fontStyle: 'italic'
+                      }}>
+                        Press any key to continue
+                      </p>
+                    )}
+                    
+                    {/* For temporary wrong answers, show a different message */}
+                    {!gameResult.correct && !revealAnswer && (
+                      <p style={{ 
+                        fontSize: '13px', 
+                        color: '#536471',
+                        marginTop: '10px'
+                      }}>
+                        Try again! {5 - guessCount} {5 - guessCount === 1 ? 'guess' : 'guesses'} remaining
+                      </p>
+                    )}
                   </div>
                 )}
               </>
