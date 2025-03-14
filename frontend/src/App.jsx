@@ -13,9 +13,9 @@ const hardcodedGameQuestions = [
     commonNeighbors: ["Harrison Ford"]
   },
   {
-    node1: "Soviet Union",
-    node2: "UEFA",
-    commonNeighbors: ["Russian Football Union"]
+    node1: "Daft Punk",
+    node2: "Aerosmith",
+    commonNeighbors: ["The Beatles"]
   },
   {
     node1: "Apple Inc.",
@@ -150,21 +150,33 @@ function App() {
       const newQuestionCount = gameQuestionCount + 1;
       setGameQuestionCount(newQuestionCount);
       
+      console.log(`=======================================`);
+      console.log(`STARTING GAME ROUND #${newQuestionCount}`);
+      console.log(`=======================================`);
+      
       // Special handling for questions when using Wikipedia mode
       if (dataSource === 'wikipedia') {
-        // Check if this position should use a hardcoded question (positions 1, 3, or 5)
-        const isHardcodedPosition = newQuestionCount === 1 || newQuestionCount === 3 || newQuestionCount === 5;
+        // Check if this position should use a hardcoded question (explicitly positions 1, 3, or 5)
+        const isHardcodedPosition = (newQuestionCount === 1 || newQuestionCount === 3 || newQuestionCount === 5);
+        
+        console.log(`Question #${newQuestionCount} - Is hardcoded position? ${isHardcodedPosition}`);
         
         if (isHardcodedPosition) {
           // Determine which hardcoded question to use based on position
           let hardcodedIndex;
           
           if (newQuestionCount === 1) {
-            hardcodedIndex = 0; // First hardcoded question
+            // First position (1): Star Wars and Brad Pitt with Harrison Ford
+            hardcodedIndex = 0;
+            console.log(`Question position ${newQuestionCount}: Using Star Wars/Brad Pitt with answer: Harrison Ford`);
           } else if (newQuestionCount === 3) {
-            hardcodedIndex = 1; // Second hardcoded question
-          } else { // newQuestionCount === 5
-            hardcodedIndex = 2; // Third hardcoded question
+            // Second position (3): Daft Punk and Aerosmith with The Beatles
+            hardcodedIndex = 1;
+            console.log(`Question position ${newQuestionCount}: Using Daft Punk/Aerosmith with answer: The Beatles`);
+          } else if (newQuestionCount === 5) {
+            // Third position (5): Apple Inc. and Jay-Z with Apple Music
+            hardcodedIndex = 2;
+            console.log(`Question position ${newQuestionCount}: Using Apple Inc./Jay-Z with answer: Apple Music`);
           }
           
           const selectedQuestion = hardcodedGameQuestions[hardcodedIndex];
@@ -172,6 +184,8 @@ function App() {
           // Add this question to the shown list
           const updatedShownQuestions = [...shownHardcodedQuestions, hardcodedIndex];
           setShownHardcodedQuestions(updatedShownQuestions);
+          
+          console.log(`Using hardcoded question #${hardcodedIndex + 1} at position ${newQuestionCount}`);
           
           if (fullGraph.hasNode(selectedQuestion.node1) && fullGraph.hasNode(selectedQuestion.node2)) {
             // Make sure all common neighbors exist in the graph
@@ -209,6 +223,8 @@ function App() {
           }
         }
       }
+      
+      console.log(`Question #${newQuestionCount}: Generating dynamic question (not a hardcoded position)`);
       
       // Fall back to dynamic node finding if we can't use a hardcoded question
       const nodePair = findTwoDegreesApartNodes();
@@ -256,8 +272,11 @@ function App() {
       setWrongGuesses([]); // Reset wrong guesses
       setGuessCount(0); // Reset guess count
       setRevealAnswer(false); // Reset revealed answer state
-      setGameQuestionCount(0); // Reset question counter
-      setShownHardcodedQuestions([]); // Reset shown questions
+      
+      // IMPORTANT: Reset game question tracking state
+      setGameQuestionCount(0);
+      setShownHardcodedQuestions([]);
+      console.log("=== GAME MODE ENABLED: Question counter reset to 0 ===");
       
       // Start a new game round when enabling game mode
       startNewGameRound();
@@ -280,8 +299,15 @@ function App() {
   };
 
   // Separate function for the keypress handler to move to next question
-  const handleNewRoundKeyPress = () => {
+  const handleNewRoundKeyPress = (e) => {
+    console.log("Key pressed to start new round");
+    // Remove the event listener first to prevent multiple calls
     document.removeEventListener('keydown', handleNewRoundKeyPress);
+    
+    // Log current question count before starting a new round
+    console.log(`Advancing from question #${gameQuestionCount} to next question`);
+    
+    // Start the new round directly
     startNewGameRound();
   };
 
